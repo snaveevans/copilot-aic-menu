@@ -1,0 +1,105 @@
+name: Release
+
+on:
+  push:
+    tags: ['v*.*.*']
+
+permissions:
+  contents: write # Publish the release and update Casks/ on the default branch.
+
+jobs:
+  release:
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Determine version
+        run: |
+          version="${GITHUB_REF_NAME#v}"
+          [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || exit 1
+          echo "VERSION=$version" >> "$GITHUB_ENV"
+      - name: Offline checks
+        run: swift run AICCoreChecks
+      - name: Import Developer ID certificate if configured
+        env:
+          MACOS_CERTIFICATE_P12: ${{ secrets.MACOS_CERTIFICATE_P12 }}
+          MACOS_CERTIFICATE_PASSWORD: ${{ secrets.MACOS_CERTIFICATE_PASSWORD }}
+          MACOS_CODESIGN_IDENTITY: ${{ secrets.MACOS_CODESIGN_IDENTITY }}
+        run: |
+          if [[ -z "$MACOS_CERTIFICATE_P12" ]]; then
+            echo '::warning::No Developer ID certificate: the downloadable app will be ad-hoc signed and may be blocked by Gatekeeper.'
+            exit 0
+          fi
+          : "${MACOS_CERTIFICATE_PASSWORD:?Set MACOS_CERTIFICATE_PASSWORD}"
+          : "${MACOS_CODESIGN_IDENTITY:?Set MACOS_CODESIGN_IDENTITY}"
+          keychain="$RUNNER_TEMP/aic-signing.keychain-db"
+          password="$(openssl rand -hex 24)"
+          security create-keychain -p "$password" "$keychain"
+          security set-keychain-settings -lut 21600 "$keychain"
+          security unlock-keychain -p "$password" "$keychain"
+          printf '%s' "$MACOS_CERTIFICATE_P12" | base64 -D > "$RUNNER_TEMP/certificate.p12"
+          security import "$RUNNER_TEMP/certificate.p12" -k "$keychain" -P "$MACOS_CERTIFICATE_PASSWORD" -T /usr/bin/codesign
+          security list-keychains -d user -s "$keychain"
+          security set-key-partition-list -S apple-tool:,apple: -s -k "$password" "$keychain"
+          rm -f "$RUNNER_TEMP/certificate.p12"
+          echo "CODESIGN_IDENTITY=$MACOS_CODESIGN_IDENTITY" >> "$GITHUB_ENV"
+      - name: Build universal app
+        env:
+          UNIVERSAL: '1'
+          BUILD_NUMBER: ${{ github.run_number }}
+        run: ./scripts/build-app.sh
+      - name: Notarize if credentials are configured
+        env:
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: |
+          if [[ -z "${CODESIGN_IDENTITY:-}" ]]; then
+            exit 0
+          fi
+          if [[ -z "$APPLE_ID" || -z "$APPLE_APP_SPECIFIC_PASSWORD" || -z "$APPLE_TEAM_ID" ]]; then
+            echo '::warning::Signed but not notarized: configure APPLE_ID, APPLE_APP_SPECIFIC_PASSWORD and APPLE_TEAM_ID for a frictionless download.'
+            exit 0
+          fi
+          ./scripts/package-release.sh
+          xcrun notarytool submit dist/CopilotAICMenu-macos-universal.zip \
+            --apple-id "$APPLE_ID" --password "$APPLE_APP_SPECIFIC_PASSWORD" \
+            --team-id "$APPLE_TEAM_ID" --wait
+          xcrun stapler staple dist/CopilotAICMenu.app
+          xcrun stapler validate dist/CopilotAICMenu.app
+      - name: Package final app
+        run: |
+          ./scripts/package-release.sh
+          codesign --verify --deep dist/CopilotAICMenu.app
+      - name: Publish GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" \
+            dist/CopilotAICMenu-macos-universal.zip dist/SHA256SUMS.txt \
+            --title "$GITHUB_REF_NAME" --generate-notes --verify-tag
+      - name: Update Homebrew cask
+        id: cask
+        continue-on-error: true # A protected default branch may require a manual PR.
+        env:
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+        run: |
+          sha="$(shasum -a 256 dist/CopilotAICMenu-macos-universal.zip | awk '{print $1}')"
+          ruby scripts/generate-cask.rb "$GITHUB_REPOSITORY" "$VERSION" "$sha" > "$RUNNER_TEMP/copilot-aic-menu.rb"
+          git fetch origin "$DEFAULT_BRANCH"
+          git checkout -B "$DEFAULT_BRANCH" "origin/$DEFAULT_BRANCH"
+          mkdir -p Casks
+          cp "$RUNNER_TEMP/copilot-aic-menu.rb" Casks/copilot-aic-menu.rb
+          git add Casks/copilot-aic-menu.rb
+          if ! git diff --cached --quiet; then
+            git -c user.name='github-actions[bot]' \
+                -c user.email='41898282+github-actions[bot]@users.noreply.github.com' \
+                commit -m "Update Homebrew cask to v$VERSION"
+            git push origin "HEAD:$DEFAULT_BRANCH"
+          fi
+      - name: Cask update notice
+        if: steps.cask.outcome == 'failure'
+        run: |
+          echo '::warning::Release was published, but the cask update could not be pushed. Check branch protection and update Casks/copilot-aic-menu.rb manually using scripts/generate-cask.rb.'
+      - name: Remove temporary signing keychain
+        if: always()
+        run: security delete-keychain "$RUNNER_TEMP/aic-signing.keychain-db" 2>/dev/null || true

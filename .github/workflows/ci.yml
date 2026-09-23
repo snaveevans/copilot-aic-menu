@@ -1,0 +1,27 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  test-and-package:
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Offline checks
+        run: swift run AICCoreChecks
+      - name: Build universal app
+        run: UNIVERSAL=1 ./scripts/build-app.sh
+      - name: Verify release archive
+        run: |
+          ./scripts/package-release.sh
+          mkdir -p /tmp/aic-archive-check
+          ditto -x -k dist/CopilotAICMenu-macos-universal.zip /tmp/aic-archive-check
+          codesign --verify --deep /tmp/aic-archive-check/CopilotAICMenu.app
+          lipo -info /tmp/aic-archive-check/CopilotAICMenu.app/Contents/MacOS/CopilotAICMenu
