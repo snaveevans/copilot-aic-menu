@@ -1,0 +1,8 @@
+.build/
+.swiftpm/
+dist/
+.DS_Store
+
+# Private, unredacted screenshot inputs; only docs/images/ is publishable.
+/menu_bar.png
+/expanded_menu.png
