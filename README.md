@@ -14,22 +14,22 @@ Expanded menu (credit counts, account name, and timestamps are irreversibly obsc
 
 ## Install
 
-After this repository is published on GitHub and its first tagged release has completed, choose one of these options. Replace `OWNER/REPO` with its actual GitHub path (for example, `alice/copilot-aic-menu`).
+After the first tagged release has completed, choose one of these options.
 
 ### Homebrew
 
 ```sh
-brew tap OWNER/REPO https://github.com/OWNER/REPO.git
-brew install --cask OWNER/REPO/copilot-aic-menu
+brew tap snaveevans/copilot-aic-menu https://github.com/snaveevans/copilot-aic-menu.git
+brew install --cask snaveevans/copilot-aic-menu/copilot-aic-menu
 gh auth login
 open /Applications/CopilotAICMenu.app
 ```
 
-The cask installs the `gh` formula as a dependency. The release workflow adds or updates the cask in `Casks/` on the repository's default branch. `brew upgrade --cask OWNER/REPO/copilot-aic-menu` upgrades it after subsequent releases.
+The cask installs the `gh` formula as a dependency. The release workflow adds or updates the cask in `Casks/` on the repository's default branch. `brew upgrade --cask snaveevans/copilot-aic-menu/copilot-aic-menu` upgrades it after subsequent releases.
 
 ### Direct download
 
-Download `CopilotAICMenu-macos-universal.zip` and `SHA256SUMS.txt` from this repository's latest **GitHub Release**. Unzip the archive, drag `CopilotAICMenu.app` into `/Applications`, then install [GitHub CLI](https://cli.github.com/) if needed and run:
+Download `CopilotAICMenu-macos-universal.zip` and `SHA256SUMS.txt` from the [latest GitHub Release](https://github.com/snaveevans/copilot-aic-menu/releases/latest). Unzip the archive, drag `CopilotAICMenu.app` into `/Applications`, then install [GitHub CLI](https://cli.github.com/) if needed and run:
 
 ```sh
 gh auth login
@@ -66,7 +66,7 @@ For these sources, use **Set GitHub Token…** and paste with ⌘V or **Paste fr
 
 ## Releasing
 
-Once the repository has a GitHub remote and Actions are enabled, push a version tag such as `v0.1.0`. [CI](.github/workflows/ci.yml) runs offline checks and packages both architectures. The [release workflow](.github/workflows/release.yml) builds a universal `.app`, publishes a ZIP and SHA-256 file to GitHub Releases, then generates a version-and-checksum-pinned Homebrew cask and pushes it to the default branch. If that branch is protected, the release still publishes but a maintainer must commit the generated `Casks/copilot-aic-menu.rb` through a PR. Make sure Actions has permission to write repository contents.
+Push a version tag such as `v0.1.0` when ready to publish a downloadable app. [CI](.github/workflows/ci.yml) runs offline checks and packages both architectures. The [release workflow](.github/workflows/release.yml) builds a universal `.app`, publishes a ZIP and SHA-256 file to GitHub Releases, then generates a version-and-checksum-pinned Homebrew cask and pushes it to the default branch. If that branch is protected, the release still publishes but a maintainer must commit the generated `Casks/copilot-aic-menu.rb` through a PR. Make sure Actions has permission to write repository contents.
 
 GitHub's standard hosted Actions are generally free for public repositories; the MIT license itself does not determine Actions billing. For a notarized release, configure these GitHub Actions secrets from a paid Apple Developer account:
 
