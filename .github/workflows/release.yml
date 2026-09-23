@@ -66,6 +66,7 @@ jobs:
             --team-id "$APPLE_TEAM_ID" --wait
           xcrun stapler staple dist/CopilotAICMenu.app
           xcrun stapler validate dist/CopilotAICMenu.app
+          echo 'NOTARIZED=1' >> "$GITHUB_ENV"
       - name: Package final app
         run: |
           ./scripts/package-release.sh
@@ -74,9 +75,14 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
+          if [[ "${NOTARIZED:-0}" == 1 ]]; then
+            notes='Developer ID signed and notarized for macOS.'
+          else
+            notes='⚠️ This app is not notarized. macOS may block it on first launch. After attempting to open it, go to System Settings → Privacy & Security → Open Anyway, then launch it again. The same step may be needed for Homebrew installs.'
+          fi
           gh release create "$GITHUB_REF_NAME" \
             dist/CopilotAICMenu-macos-universal.zip dist/SHA256SUMS.txt \
-            --title "$GITHUB_REF_NAME" --generate-notes --verify-tag
+            --title "$GITHUB_REF_NAME" --notes "$notes" --generate-notes --verify-tag
       - name: Update Homebrew cask
         id: cask
         continue-on-error: true # A protected default branch may require a manual PR.
